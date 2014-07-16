@@ -3,6 +3,7 @@
 // Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
 
 "use strict";
+
 const esprima_require_t0 = Date.now();
 const esprima = require("esprima").parse;
 const esprima_require_t1 = Date.now();
@@ -77,7 +78,7 @@ function matchNgRoute(node) {
     if (args.length !== 2) {
         return false;
     }
-    const configArg = last(args)
+    const configArg = last(args);
     if (configArg.type !== "ObjectExpression") {
         return false;
     }
@@ -160,7 +161,7 @@ function matchNgUi(node) {
         matchProp("controllerProvider", props),
         matchProp("templateProvider", props),
         matchProp("onEnter", props),
-        matchProp("onExit", props),
+        matchProp("onExit", props)
     ];
 
     // {resolve: ..}
@@ -218,7 +219,7 @@ function matchRegular(node, ctx) {
     const args = node.arguments;
     const target = (is.someof(method.name, ["config", "run"]) ?
         args.length === 1 && args[0] :
-        args.length === 2 && args[0].type === "Literal" && is.string(args[0].value) && args[1]);
+        args.length === 2 && args[0].type === "Literal" && is.string(args[0].value) && [args[0], args[1]]);
 
     if (target) {
         target.$always = true;
@@ -264,41 +265,46 @@ function matchResolve(props) {
         });
     }
     return [];
-};
+}
 
-function stringify(arr, quot) {
+function getReplaceString(ctx, originalString) {
+    return (ctx.rename[originalString] || originalString);
+}
+
+function stringify(ctx, arr, quot) {
     return "[" + arr.map(function(arg) {
-        return quot + arg.name + quot;
+        return quot + getReplaceString(ctx, arg.name) + quot;
     }).join(", ") + "]";
 }
 
-function insertArray(functionExpression, fragments, quot) {
+function insertArray(ctx, functionExpression, fragments, quot) {
     const range = functionExpression.range;
 
-    const args = stringify(functionExpression.params, quot);
+    const args = stringify(ctx, functionExpression.params, quot);
     fragments.push({
         start: range[0],
         end: range[0],
-        str: args.slice(0, -1) + ", ",
+        str: args.slice(0, -1) + ", "
     });
     fragments.push({
         start: range[1],
         end: range[1],
-        str: "]",
+        str: "]"
     });
 }
 
-function replaceArray(array, fragments, quot) {
+function replaceArray(ctx, array, fragments, quot) {
     const functionExpression = last(array.elements);
 
     if (functionExpression.params.length === 0) {
         return removeArray(array, fragments);
     }
-    const args = stringify(functionExpression.params, quot);
+
+    const args = stringify(ctx, functionExpression.params, quot);
     fragments.push({
         start: array.range[0],
         end: functionExpression.range[0],
-        str: args.slice(0, -1) + ", ",
+        str: args.slice(0, -1) + ", "
     });
 }
 
@@ -308,12 +314,21 @@ function removeArray(array, fragments) {
     fragments.push({
         start: array.range[0],
         end: functionExpression.range[0],
-        str: "",
+        str: ""
     });
     fragments.push({
         start: functionExpression.range[1],
         end: array.range[1],
-        str: "",
+        str: ""
+    });
+}
+
+function replaceString(ctx, string, fragments, quot) {
+    var customReplace = getReplaceString(ctx, string.value);
+    fragments.push({
+        start: string.range[0],
+        end: string.range[1],
+        str: quot + customReplace + quot
     });
 }
 
@@ -341,11 +356,13 @@ function judgeSuspects(ctx) {
         }
 
         if (mode === "rebuild" && isAnnotatedArray(target)) {
-            replaceArray(target, fragments, quot);
+            replaceArray(ctx, target, fragments, quot);
         } else if (mode === "remove" && isAnnotatedArray(target)) {
             removeArray(target, fragments);
         } else if (is.someof(mode, ["add", "rebuild"]) && isFunctionExpressionWithArgs(target)) {
-            insertArray(target, fragments, quot);
+            insertArray(ctx, target, fragments, quot);
+        } else if (isGenericProviderName(target)) {
+            replaceString(ctx, target, fragments, quot);
         }
     }
 }
@@ -368,6 +385,9 @@ function isFunctionExpressionWithArgs(node) {
 function isFunctionDeclarationWithArgs(node) {
     return node.type === "FunctionDeclaration" && node.params.length >= 1;
 }
+function isGenericProviderName(node) {
+  return node.type === "Literal" && is.string(node.value);
+}
 
 module.exports = function ngAnnotate(src, options) {
     const mode = (options.add && options.remove ? "rebuild" :
@@ -380,6 +400,7 @@ module.exports = function ngAnnotate(src, options) {
 
     const quot = options.single_quotes ? "'" : '"';
     const re = (options.regexp ? new RegExp(options.regexp) : /^[a-zA-Z0-9_\$\.\s]+$/);
+    const rename = options.rename || {};
     let ast;
     const stats = {};
     try {
@@ -389,13 +410,13 @@ module.exports = function ngAnnotate(src, options) {
 
         ast = esprima(src, {
             range: true,
-            comment: true,
+            comment: true
         });
 
         stats.esprima_parse_t1 = Date.now();
     } catch(e) {
         return {
-            errors: ["error: couldn't process source due to parse error", e.message],
+            errors: ["error: couldn't process source due to parse error", e.message]
         };
     }
 
@@ -405,7 +426,7 @@ module.exports = function ngAnnotate(src, options) {
     // append a dummy-node to ast to catch any remaining triggers
     ast.body.push({
         type: "DebuggerStatement",
-        range: [ast.range[1], ast.range[1]],
+        range: [ast.range[1], ast.range[1]]
     });
 
     // detach comments from ast
@@ -437,6 +458,7 @@ module.exports = function ngAnnotate(src, options) {
             return src.slice(range[0], range[1]);
         },
         re: re,
+        rename: rename,
         comments: comments,
         fragments: fragments,
         triggers: triggers,
@@ -446,7 +468,7 @@ module.exports = function ngAnnotate(src, options) {
         isAnnotatedArray: isAnnotatedArray,
         addModuleContextDependentSuspect: addModuleContextDependentSuspect,
         addModuleContextIndependentSuspect: addModuleContextIndependentSuspect,
-        stringify: stringify,
+        stringify: stringify
     };
 
     const plugins = options.plugin || [];
@@ -505,6 +527,6 @@ module.exports = function ngAnnotate(src, options) {
 
     return {
         src: out,
-        _stats: stats,
+        _stats: stats
     };
-}
+};

@@ -17,29 +17,34 @@ const optimist = require("optimist")
     .options("a", {
         alias: "add",
         boolean: true,
-        describe: "add dependency injection annotations where non-existing",
+        describe: "add dependency injection annotations where non-existing"
     })
     .options("r", {
         alias: "remove",
         boolean: true,
-        describe: "remove all existing dependency injection annotations",
+        describe: "remove all existing dependency injection annotations"
     })
     .options("o", {
-        describe: "write output to <file>. output is written to stdout by default",
+        describe: "write output to <file>. output is written to stdout by default"
     })
     .options("single_quotes", {
         boolean: true,
-        describe: "use single quotes (') instead of double quotes (\")",
+        describe: "use single quotes (') instead of double quotes (\")"
     })
     .options("regexp", {
-        describe: "detect short form myMod.controller(...) iff myMod matches regexp",
+        describe: "detect short form myMod.controller(...) iff myMod matches regexp"
+    })
+    .options("rename", {
+        describe: "rename declarations and annotated refernces\n" +
+            "originalName newName anotherOriginalName anotherNewName ...",
+        default: ""
     })
     .options("plugin", {
-        describe: "use plugin with path (experimental)",
+        describe: "use plugin with path (experimental)"
     })
     .options("stats", {
         boolean: true,
-        describe: "print statistics on stderr (experimental)",
+        describe: "print statistics on stderr (experimental)"
     });
 
 const argv = optimist.argv;
@@ -101,7 +106,7 @@ function runAnnotate(err, src) {
     }, {});
 
 
-    ["add", "remove", "o", "regexp", "single_quotes", "plugin", "stats"].forEach(function(opt) {
+    ["add", "remove", "o", "regexp", "rename", "single_quotes", "plugin", "stats"].forEach(function(opt) {
         if (opt in argv) {
             config[opt] = argv[opt];
         }
@@ -126,6 +131,15 @@ function runAnnotate(err, src) {
         });
     }
 
+  if (config.rename) {
+    var flattenRename = config.rename.split(" ");
+    var renameMap = {};
+    for (var i = 0; i < flattenRename.length; i = i + 2) {
+      renameMap[flattenRename[i]]= flattenRename[i+1];
+    }
+    config.rename = renameMap;
+  }
+
     const run_t0 = Date.now();
     const ret = ngAnnotate(src, config);
     const run_t1 = Date.now();
@@ -145,7 +159,7 @@ function runAnnotate(err, src) {
 
         const pct = function(n) {
             return Math.round(100 * n / all);
-        }
+        };
 
         process.stderr.write(fmt("[{0} ms] esprima: {1}, nga init: {2}, nga run: {3}\n", all, all_esprima, nga_init, nga_run));
         process.stderr.write(fmt("[%] esprima: {0}, nga init: {1}, nga run: {2}\n", pct(all_esprima), pct(nga_init), pct(nga_run)));
